@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Load config
+. ./git-shell-commands/config
+
+ls -1 "$GITROOT"

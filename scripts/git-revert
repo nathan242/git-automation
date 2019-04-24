@@ -1,0 +1,45 @@
+#!/bin/bash
+
+if [ $# -ne 1 ]
+then
+	echo "GIT-REVERT: Incorrect number of parameters!"
+	exit 1
+fi
+
+if [ ! -d "$1" ]
+then
+	echo "GIT-REVERT: Passed folder does not exist!"
+	exit 1
+fi
+
+DEST=$(basename $1)
+cd $1/..
+if [ $? -ne 0 ]
+then
+	echo "GIT-REVERT: Cannot access $1/..!"
+	exit 1
+fi
+
+if [ $(ls -1A | grep -- "$DEST-20[0-9][0-9][0-1][0-9][0-9][0-9]\.[0-2][0-9]\.[0-6][0-9]\.[0-6][0-9]" | wc -l) -gt 0 ]
+then
+	LASTBKP=$(ls -1A | grep -- "$DEST-20[0-9][0-9][0-1][0-9][0-9][0-9]\.[0-2][0-9]\.[0-6][0-9]\.[0-6][0-9]" | tail -n 1)
+	echo "GIT-REVERT: Removing existing destination..."
+	rm -R $DEST
+	if [ $? -ne 0 ]
+	then
+		echo "GIT-REVERT: Unable to remove $1!"
+		exit 1
+	fi
+	echo "GIT-REVERT: Moving $LASTBKP -> $DEST ..."
+	mv $LASTBKP $DEST
+	if [ $? -ne 0 ]
+	then
+		echo "GIT-REVERT: Unable to move backup to destination!"
+		exit 1
+	fi
+	echo "COMPLETE!"
+	exit 0
+else
+	echo "GIT-REVERT: No backups!"
+fi
+

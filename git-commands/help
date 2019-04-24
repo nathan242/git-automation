@@ -1,0 +1,17 @@
+#!/bin/bash
+
+echo "===Git System==="
+echo ""
+echo "Availiable commands:"
+echo ""
+echo "list-repo	- List git repositories"
+echo "list-branches 	- List branches in a repository"
+echo "list-files	- List files in a branch"
+echo "create-repo	- Create a new git repository"
+echo "show-file	- Print file contents"
+echo "show-log	- Show git log"
+echo "show-storage	- Shows storage information"
+echo "passwd		- Change your password"
+echo "help		- Display this message"
+echo "exit		- Log out"
+echo ""

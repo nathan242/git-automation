@@ -1,0 +1,239 @@
+#!/bin/bash
+
+function help
+{
+	echo "GITCTL"
+	echo "USAGE: $0 -w [WORKING_DIR] -s [GIT_SOURCE] -b [GIT_BRANCH] -p [PASSWORD_FILE] -d [DESTINATION] -c [COMMAND] -k [REMOVE_BACKUPS]"
+	echo "Pull code from a git repo and put it live."
+	echo ".git and .gitignore files will automatically be removed."
+	echo "OPTIONS:"
+	echo "-h				Show this help message."
+	echo "-w [WORKING_DIR]		Set working directory. Will be used to hold and prepare code before moving to [DESTINATION]. This folder must exist and be empty."
+	echo "-s [GIT_SOURCE]			Git source for clone operation. Can be a local or remote directory. e.g. user@host:/git/project"
+	echo "-b [GIT_BRANCH]			Git branch to use."
+	echo "-p [PASSWORD_FILE]		(Optional) File containing password for git clone."
+	echo "-d [DESTINATION]		Destination for the live code. Must exist and existing folder will be renamed to [DESTINATION]-[DATE]-[COUNT]."
+	echo "-c [COMMAND]			(Optional) Command to run on code before moving to [DESTINATION]."
+	echo "-k [KEEP_BACKUPS]		(Optional) Keep this many backups."
+}
+
+function cleanup
+{
+	shopt -s dotglob
+	rm -Rf $WORKING_DIR/*
+}
+
+DATE=`date +%Y%m%d.%H.%M.%S`
+
+# Variables for arguments
+WORKING_DIR=""
+GIT_SOURCE=""
+GIT_BRANCH=""
+PASSWORD_FILE=""
+SRC_COMMAND=""
+DESTINATION=""
+BKP_KEEP=""
+
+# Check command arguments
+while getopts "w:s:b:p:c:d:k:h" o;
+do
+	case "${o}" in
+		w)
+			WORKING_DIR=${OPTARG}
+			;;
+		s)
+			GIT_SOURCE=${OPTARG}
+			;;
+		b)
+			GIT_BRANCH=${OPTARG}
+			;;
+		p)
+			PASSWORD_FILE=${OPTARG}
+			;;
+		c)
+			SRC_COMMAND=${OPTARG}
+			;;
+		d)
+			DESTINATION=${OPTARG}
+			;;
+		k)
+			BKP_KEEP=${OPTARG}
+			;;
+		h)
+			help
+			exit
+			;;
+		*)
+			help
+			exit 1
+			;;
+	esac
+done
+shift $((OPTIND-1))
+
+if [ -z $WORKING_DIR ]
+then
+	echo "ERROR: WORKING_DIR is not set!"
+	help
+	exit 1
+fi
+
+if [ -z $GIT_SOURCE ]
+then
+	echo "ERROR: GIT_SOURCE is not set!"
+	help
+	exit 1
+fi
+
+if [ -z $GIT_BRANCH ]
+then
+        echo "ERROR: GIT_BRANCH is not set!"
+        help
+        exit 1
+fi
+
+if [ -z $DESTINATION ]
+then
+        echo "ERROR: DESTINATION is not set!"
+        help
+        exit 1
+fi
+
+if [ ! -z $BKP_KEEP ]
+then
+	RE='^[0-9]+$'
+	if [[ ! $BKP_KEEP =~ $RE ]]
+	then
+		echo "ERROR: KEEP_BACKUPS must be an integer!"
+		help
+		exit 1
+	fi
+fi
+
+# Process
+# Change to working directory
+cd $WORKING_DIR
+if [ $? -ne 0 ]
+then
+	echo "ERROR: Cannot access WORKING_DIR!"
+	exit 1
+fi
+if [ `ls -1A | wc -l` -ne 0 ]
+then
+	echo "ERROR: WORKING_DIR is not empty!"
+	exit 1
+fi
+
+# Verify destination directory exists
+if [ ! -d $DESTINATION ]
+then
+	echo "ERROR: DESTINATION does not exist!"
+	exit 1
+fi
+
+# Git clone in source
+if [ -z $PASSWORD_FILE ]
+then
+	git clone --branch $GIT_BRANCH --depth 1 $GIT_SOURCE
+	if [ $? -ne 0 ]
+	then
+		echo "ERROR: Git clone failed!"
+	        exit 1
+	fi
+else
+	if [ -e $PASSWORD_FILE ]
+	then
+		if [ -r $PASSWORD_FILE ]
+		then
+			sshpass -f$PASSWORD_FILE git clone --branch $GIT_BRANCH --depth 1 $GIT_SOURCE
+			if [ $? -ne 0 ]
+		        then
+                		echo "ERROR: Git clone failed!"
+		                exit 1
+		        fi
+		else
+			echo "ERROR: Password file is not readable!"
+			exit 1
+		fi
+	else
+		echo "ERROR: Password file does not exist!"
+		exit 1
+	fi
+fi
+
+REPO_NAME=`ls -1A`
+if [ -z $REPO_NAME ]
+then
+	echo "ERROR: WORKING_DIR empty after git clone!"
+	exit 1
+fi
+
+# Remove git data from source
+echo "Removing .git and .gitignore from source..."
+find . -depth -name .git -exec rm -Rf {} \;
+find . -depth -name .gitignore -exec rm -Rf {} \;
+
+# If command is specified it will be ran on the source
+if [ ! -z $SRC_COMMAND ]
+then
+	if [ -x $SRC_COMMAND ]
+	then
+		echo "Running `basename $SRC_COMMAND` on source..."
+		$SRC_COMMAND $WORKING_DIR/$REPO_NAME $GIT_BRANCH
+		if [ $? -ne 0 ]
+		then
+			echo "ERROR: $SRC_COMMAND returned with non-zero!"
+			cleanup
+			exit 1
+		fi
+	else
+		echo "ERROR: $SRC_COMMAND does not exist or is not executable!"
+		cleanup
+		exit 1
+	fi
+fi
+
+# Backup destination and move
+DESTCOUNT=0
+DESTBKP=$DESTINATION/../`basename ${DESTINATION}`-$DATE
+while [ -e $DESTBKP ]
+do
+	let "DESTCOUNT++";
+	DESTBKP=$DESTINATION/../`basename ${DESTINATION}`-$DATE-$DESTCOUNT
+done
+mv $DESTINATION $DESTBKP
+if [ $? -ne 0 ]
+then
+	echo "ERROR: Could not backup existing destination!"
+	cleanup
+	exit 1
+fi
+mv $WORKING_DIR/$REPO_NAME $DESTINATION
+if [ $? -ne 0 ]
+then
+        echo "ERROR: Could not move new code to destination!"
+        cleanup
+        exit 1
+fi
+
+# Remove old backups if set
+if [ ! -z $BKP_KEEP ]
+then
+	echo "Will remove old backups if there are more than ${BKP_KEEP}..."
+	while [ $(ls -1A $DESTINATION/.. | grep -- "$(basename $DESTINATION)-20[0-9][0-9][0-1][0-9][0-9][0-9]\.[0-2][0-9]\.[0-6][0-9]\.[0-6][0-9]" | wc -l) -gt $BKP_KEEP ]
+	do
+		OLDFILE=$(ls -1A $DESTINATION/.. | grep -- "$(basename $DESTINATION)-20[0-9][0-9][0-1][0-9][0-9][0-9]\.[0-2][0-9]\.[0-6][0-9]\.[0-6][0-9]" | head -n 1)
+		echo "Removing $DESTINATION/../$OLDFILE"
+		rm -R $DESTINATION/../$OLDFILE
+		if [ $? -ne 0 ]
+		then
+			echo "WARNING: Error removing $DESTINATION/../$OLDFILE"
+		fi
+	done
+fi
+
+# Final cleanup
+cleanup
+
+echo "COMPLETE!"
+

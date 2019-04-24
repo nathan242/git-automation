@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Load config
+. ./git-shell-commands/config
+
+if [ $# -ne 3 ]
+then
+        echo "Usage:"
+        echo "show-file [repository] [branch] [file]"
+        echo ""
+        echo "Show contents of a file."
+        exit
+fi
+
+# Check that input does not contain /
+if [ `echo $1 | grep -c /` -ne 0 ]
+then
+        echo "ERROR: you cannot specify a git repository containing the / character"
+        exit
+fi
+
+# Show file
+cd "$GITROOT/$1" > /dev/null 2>&1
+if [ $? -ne 0 ]
+then
+        echo "ERROR: Cannot access repository with name $1"
+        exit
+fi
+
+OUTPUT=`git show $2:$3 2>/dev/null`
+if [ $? -ne 0 ]
+then
+        echo "ERROR: Cannot access $2:$3"
+        exit
+fi
+
+echo "Contents of $1:$2:$3:"
+echo ""
+echo "$OUTPUT"

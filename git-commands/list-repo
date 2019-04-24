@@ -1,0 +1,20 @@
+#!/bin/bash
+
+#Load config
+. ./git-shell-commands/config
+
+echo "Current repositories:"
+OUTPUT="FOLDER/CREATOR/SIZE"
+OUTPUT="$OUTPUT\n------/-------/----"
+
+IFS=$'\n'
+for i in `ls -lh "$GITROOT" | sed -n '1!p' | tr -s ' '`
+do
+	FOLDER=`echo $i | cut -d' ' -f9-`
+	SIZE=`du -hs "$GITROOT/$FOLDER" | sed 's/\t.*//g'`
+	CREATOR=`echo $i | cut -d' ' -f3`
+
+	OUTPUT="$OUTPUT\n$FOLDER/$CREATOR/$SIZE"
+done
+
+echo -e $OUTPUT | column -t -s '/'

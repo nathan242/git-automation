@@ -1,0 +1,96 @@
+#!/bin/bash
+
+if [ $# -ne 2 ]
+then
+	echo "GIT-PREPARE: Incorrect number of parameters!"
+	exit 1
+fi
+
+if [ ! -d "$1" ]
+then
+	echo "GIT-PREPARE: Passed folder does not exist!"
+	exit 1
+fi
+
+if [ ! -e "$1/git-deploy.config" ]
+then
+	echo "GIT-PREPARE: No config file found. Nothing to do."
+	exit 0
+fi
+
+if [ ! -r "$1/git-deploy.config" ]
+then
+	echo "GIT-PREPARE: Cannot read config file!"
+	exit 1
+fi
+
+# Convert config file to UNIX format
+dos2unix "$1/git-deploy.config"
+if [ $? -ne 0 ]
+then
+	echo "GIT-PREPARE: Failed to convert config file to UNIX format!"
+	exit 1
+fi
+
+# Read config line by line
+# FORMAT: branch:file:action:parameters
+# ACTION: d=delete m=move o=owner g=group p=perms(mode)
+
+ACTIONS=""
+NEWL=$'\n'
+
+while IFS='' read -r line || [[ -n "$line" ]];
+do
+	# Skip comments
+	if [ "`echo $line | cut -c1`" == '#' ] || [ "`echo $line | cut -c1`" == '' ]; then continue; fi
+	# Check line is valid. Should have 3 sections
+	if [ `echo $line | grep -o : | wc -l` -ne 3 ]; then echo "GIT-PREPARE: Error in config file! ($line)"; exit 1; fi
+	# Get config for branch
+	if [ `echo $line | grep ^$2\: | wc -l` -eq 1 ]; then ACTIONS="$ACTIONS$NEWL`echo $line | cut -d':' -f2-`"; fi
+done < "$1/git-deploy.config"
+
+# If commands exist for current job then process
+
+if [ -n "$ACTIONS" ] 
+then
+	IFS=$'\n'
+	for a in $ACTIONS
+	do
+		unset IFS
+		FILE="`echo $a | cut -d':' -f1 | perl -p -e 's/(?<=\/)\.+|\.+(?=\/)//g'`"
+		ACTION="`echo $a | cut -d':' -f2 | perl -p -e 's/(?<=\/)\.+|\.+(?=\/)//g'`"
+		PARAM="`echo $a | cut -d':' -f3 | perl -p -e 's/(?<=\/)\.+|\.+(?=\/)//g'`"
+		
+		case "$ACTION" in
+			d)
+				echo "rm $1/$FILE"
+				rm $1/$FILE
+				;;
+			m)
+				echo "mv $1/$FILE $1/$PARAM"
+				mv $1/$FILE $1/$PARAM
+				;;
+			o)
+				echo "chown $PARAM $1/$FILE"
+				chown $PARAM $1/$FILE
+				;;
+			g)
+				echo "chgrp $PARAM $1/$FILE"
+				chgrp $PARAM $1/$FILE
+				;;
+			p)
+				echo "chmod $PARAM $1/$FILE"
+				chmod $PARAM $1/$FILE
+				;;
+			*)
+				echo "GIT-PREPARE: WARNING! Unknown action ($ACTION)"
+				;;
+		esac
+	done
+else
+	echo "GIT-PREPARE: No actions to process!"
+fi
+
+# Remove config file
+rm "$1/git-deploy.config"
+

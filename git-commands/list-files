@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Load config
+. ./git-shell-commands/config
+
+if [ $# -ne 2 ]
+then
+        echo "Usage:"
+        echo "list-files [repository] [branch]"
+        echo ""
+        echo "Lists files in a repository."
+        exit
+fi
+
+# Check that input does not contain /
+if [ `echo $1 | grep -c /` -ne 0 ]
+then
+        echo "ERROR: you cannot specify a git repository containing the / character"
+        exit
+fi
+
+# List files
+cd "$GITROOT/$1" > /dev/null 2>&1
+if [ $? -ne 0 ]
+then
+        echo "ERROR: Cannot access repository with name $1"
+        exit
+fi
+
+OUTPUT=`git ls-tree -r "$2" 2>/dev/null`
+if [ $? -ne 0 ]
+then
+	echo "ERROR: Cannot access branch with name $2"
+	exit
+fi
+
+echo "Files in $1 [$2]:"
+echo ""
+echo "$OUTPUT"
